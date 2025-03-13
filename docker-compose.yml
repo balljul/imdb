@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init/01-create-schema.sql:/docker-entrypoint-initdb.d/01-create-schema.sql
-      - ./imdb-data:/imdb-v2-data:ro
+      - ./imdb-v2-data:/imdb-v2-data:ro
     command:
       - "postgres"
       - "-c"
@@ -46,7 +46,7 @@ services:
       - db
     volumes:
       - ./init:/init
-      - ./imdb-data:/imdb-v2-data:ro
+      - ./imdb-v2-data:/imdb-v2-data:ro
     environment:
       PGHOST: db
       PGUSER: imdb

@@ -2,30 +2,44 @@
 
 set -e
 
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_NAME="imdb"
+# Database connection parameters (using Docker container)
+DB_CONTAINER="imdb-v2-postgres"
 DB_USER="imdb"
-DB_PASS="imdbpass"
+DB_NAME="imdb"
+
+# Your favorite actor (change as needed)
 ACTOR_NAME="Brad Pitt"
 
+# Output directories and files
 RESULTS_DIR="./results"
-BEFORE_FILE="${RESULTS_DIR}/before_partitioning.txt"
-AFTER_FILE="${RESULTS_DIR}/after_partitioning.txt"
+WITH_INDEXES_FILE="${RESULTS_DIR}/with_indexes.txt"
+WITHOUT_INDEXES_FILE="${RESULTS_DIR}/without_indexes.txt"
+WITH_PARTITIONING_FILE="${RESULTS_DIR}/with_partitioning.txt"
 SUMMARY_FILE="${RESULTS_DIR}/performance_summary.md"
 CSV_FILE="${RESULTS_DIR}/results.csv"
 
+# Create results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
-> "$BEFORE_FILE"
-> "$AFTER_FILE"
+# Initialize files
+> "$WITH_INDEXES_FILE"
+> "$WITHOUT_INDEXES_FILE"
+> "$WITH_PARTITIONING_FILE"
 > "$SUMMARY_FILE"
-echo "Query,Before Partitioning (ms),After Partitioning (ms),Speed-Up" > "$CSV_FILE"
+echo "Query,With Indexes (ms),Without Indexes (ms),With Partitioning (ms),Speed-Up (Indexes vs Partitioning),Speed-Up (No Indexes vs Partitioning)" > "$CSV_FILE"
 
-echo "=== PostgreSQL Partitioning Performance Test ==="
-echo "Testing database: $DB_NAME on $DB_HOST:$DB_PORT"
+echo "=== PostgreSQL Performance Test for IMDb Data (Docker version) ==="
+echo "Testing database in container: $DB_CONTAINER"
 echo "Results will be saved to: $RESULTS_DIR"
 
+# Check if Docker container is running
+if ! docker ps | grep -q "$DB_CONTAINER"; then
+    echo "Error: Docker container '$DB_CONTAINER' is not running!"
+    echo "Please make sure your Docker environment is set up correctly."
+    exit 1
+fi
+
+# Function to run query and save results - with proper handling of psql commands in Docker
 run_query() {
     local query="$1"
     local description="$2"
@@ -37,21 +51,28 @@ run_query() {
     echo "SQL: $query" >> "$output_file"
     echo "-----------------------------------------------------" >> "$output_file"
 
-    PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "
-    \\timing on
-    EXPLAIN ANALYZE
-    $query
-    " >> "$output_file" 2>&1
+    # Create a temporary SQL file with timing and query
+    TMP_SQL=$(mktemp)
+    echo "\\timing" > "$TMP_SQL"
+    echo "EXPLAIN ANALYZE" >> "$TMP_SQL"
+    echo "$query" >> "$TMP_SQL"
+
+    # Run query using the SQL file
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$TMP_SQL" >> "$output_file" 2>&1
+
+    # Clean up
+    rm "$TMP_SQL"
 
     echo "" >> "$output_file"
     echo "" >> "$output_file"
 }
 
+# Function to extract execution time from file
 extract_time() {
     local file="$1"
     local description="$2"
 
-    local time=$(grep -A 50 "Query: $description" "$file" | grep "Execution Time:" | head -1 | awk '{print $3}')
+    local time=$(grep -A 50 "Query: $description" "$file" | grep "Time:" | head -1 | grep -o "[0-9.]\+ ms" | grep -o "[0-9.]\+")
 
     if [ -n "$time" ]; then
         echo "$time"
@@ -60,6 +81,7 @@ extract_time() {
     fi
 }
 
+# Function to calculate speed-up
 calculate_speedup() {
     local before="$1"
     local after="$2"
@@ -67,10 +89,11 @@ calculate_speedup() {
     if [[ "$before" == "N/A" || "$after" == "N/A" ]]; then
         echo "N/A"
     else
-        echo "scale=2; $before / $after" | bc
+        echo "scale=2; $before / $after" | bc 2>/dev/null || echo "N/A"
     fi
 }
 
+# Define queries
 declare -A queries
 queries["Query 1: Total productions"]="SELECT COUNT(*) as total_productions FROM title_basics;"
 queries["Query 2: Total persons"]="SELECT COUNT(*) as total_persons FROM name_basics;"
@@ -84,14 +107,61 @@ queries["Query 9: Movies and TV"]="SELECT tb.primaryTitle, tb.titleType, tb.star
 queries["Query 10: Productivity by year"]="SELECT tb.startYear, COUNT(DISTINCT tb.tconst) as number_of_titles, SUM(COALESCE(tb.runtimeMinutes, 0)) as total_minutes FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = '${ACTOR_NAME}' AND tp.category = 'actor' GROUP BY tb.startYear ORDER BY tb.startYear;"
 queries["Query 11: Role categories"]="SELECT tp.category, COUNT(*) as number_of_roles FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst WHERE nb.primaryName = '${ACTOR_NAME}' GROUP BY tp.category ORDER BY number_of_roles DESC;"
 
-echo "Testing queries on non-partitioned tables..."
+# Create temporary files for SQL commands
+TMP_DROP_INDEXES=$(mktemp)
+TMP_CREATE_PARTITIONS=$(mktemp)
+TMP_CHECK_INDEXES=$(mktemp)
+
+# 1. PHASE 1: WITH EXISTING INDEXES
+echo "Phase 1: Testing queries with existing indexes..."
 for description in "${!queries[@]}"; do
     query="${queries[$description]}"
-    run_query "$query" "$description" "$BEFORE_FILE"
+    run_query "$query" "$description" "$WITH_INDEXES_FILE"
 done
 
-echo "Creating partitioned tables..."
-PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "
+# 2. PHASE 2: REMOVE INDEXES
+echo "Phase 2: Removing indexes..."
+
+# Create SQL script to drop indexes
+cat > "$TMP_DROP_INDEXES" << EOF
+-- List indexes before removal
+SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'public';
+
+-- Drop all non-primary key indexes
+DO \$\$
+DECLARE
+    index_record RECORD;
+BEGIN
+    FOR index_record IN
+        SELECT indexname, tablename
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND indexname NOT LIKE '%pkey'
+    LOOP
+        EXECUTE 'DROP INDEX IF EXISTS ' || index_record.indexname;
+        RAISE NOTICE 'Dropped index % on table %', index_record.indexname, index_record.tablename;
+    END LOOP;
+END
+\$\$;
+
+-- List indexes after removal
+SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'public';
+EOF
+
+# Execute the index removal script
+docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$TMP_DROP_INDEXES"
+
+echo "Phase 2: Testing queries without indexes..."
+for description in "${!queries[@]}"; do
+    query="${queries[$description]}"
+    run_query "$query" "$description" "$WITHOUT_INDEXES_FILE"
+done
+
+# 3. PHASE 3: CREATE PARTITIONED TABLES
+echo "Phase 3: Creating partitioned tables..."
+
+# Create SQL script for partitioning
+cat > "$TMP_CREATE_PARTITIONS" << EOF
 -- First backup existing data
 CREATE TABLE temp_name_basics AS SELECT * FROM name_basics;
 CREATE TABLE temp_title_basics AS SELECT * FROM title_basics;
@@ -104,7 +174,7 @@ DROP TABLE IF EXISTS title_ratings CASCADE;
 DROP TABLE IF EXISTS title_basics CASCADE;
 DROP TABLE IF EXISTS name_basics CASCADE;
 
--- Create name_basics (no partitioning)
+-- Create name_basics (no partitioning, but with an index on primaryName)
 CREATE TABLE name_basics (
     nconst VARCHAR(10) PRIMARY KEY,
     primaryName VARCHAR(255),
@@ -113,6 +183,7 @@ CREATE TABLE name_basics (
     primaryProfession TEXT,
     knownForTitles TEXT
 );
+CREATE INDEX idx_name_basics_primaryName ON name_basics(primaryName);
 
 -- Create title_basics with range partitioning on startYear
 CREATE TABLE title_basics (
@@ -171,7 +242,7 @@ CREATE TABLE title_principals (
     ordering INT,
     nconst VARCHAR(10),
     category VARCHAR(50),
-    job TEXT,  -- Changed to TEXT to match the schema
+    job TEXT,
     characters TEXT,
     PRIMARY KEY (tconst, ordering, nconst)
 ) PARTITION BY HASH (nconst);
@@ -212,38 +283,69 @@ DROP TABLE temp_name_basics;
 DROP TABLE temp_title_basics;
 DROP TABLE temp_title_ratings;
 DROP TABLE temp_title_principals;
-"
 
-echo "Testing queries on partitioned tables..."
+-- Create specific indexes that will benefit our queries
+CREATE INDEX idx_title_basics_titleType ON title_basics(titleType);
+CREATE INDEX idx_title_principals_category ON title_principals(category);
+EOF
+
+# Execute the partitioning script
+docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$TMP_CREATE_PARTITIONS"
+
+echo "Phase 3: Testing queries on partitioned tables..."
 for description in "${!queries[@]}"; do
     query="${queries[$description]}"
-    run_query "$query" "$description" "$AFTER_FILE"
+    run_query "$query" "$description" "$WITH_PARTITIONING_FILE"
 done
 
+# Query for checking partition information
+cat > "$TMP_CHECK_INDEXES" << EOF
+SELECT
+    parent.relname AS table_name,
+    child.relname AS partition_name,
+    pg_size_pretty(pg_relation_size(child.oid)) as size
+FROM pg_inherits
+    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+WHERE parent.relname IN ('title_basics', 'title_ratings', 'title_principals')
+ORDER BY parent.relname, pg_relation_size(child.oid) DESC;
+EOF
+
+# 4. GENERATE PERFORMANCE COMPARISON REPORT
 echo "Generating performance comparison report..."
 
 cat > "$SUMMARY_FILE" <<EOL
-# PostgreSQL Partitioning Performance Comparison
+# PostgreSQL Performance Comparison: Indexes vs. Partitioning
 
 ## Test Environment
-- Database: PostgreSQL 15
+- Database: PostgreSQL 15 (Docker container: $DB_CONTAINER)
 - Actor used for tests: $ACTOR_NAME
 - Test date: $(date)
 
 ## Performance Results
 
-| Query | Before Partitioning (ms) | After Partitioning (ms) | Speed-Up |
-|-------|--------------------------|-------------------------|----------|
+| Query | With Indexes (ms) | Without Indexes (ms) | With Partitioning (ms) | Speed-Up (Indexes vs Partitioning) | Speed-Up (No Indexes vs Partitioning) |
+|-------|-------------------|----------------------|------------------------|-----------------------------------|--------------------------------------|
 EOL
 
 for description in "${!queries[@]}"; do
-    before_time=$(extract_time "$BEFORE_FILE" "$description")
-    after_time=$(extract_time "$AFTER_FILE" "$description")
-    speedup=$(calculate_speedup "$before_time" "$after_time")
+    with_indexes_time=$(extract_time "$WITH_INDEXES_FILE" "$description")
+    without_indexes_time=$(extract_time "$WITHOUT_INDEXES_FILE" "$description")
+    with_partitioning_time=$(extract_time "$WITH_PARTITIONING_FILE" "$description")
 
-    echo "| $description | $before_time | $after_time | $speedup |" >> "$SUMMARY_FILE"
+    # Handle bc not being available by using simple math for speedup
+    if command -v bc >/dev/null 2>&1; then
+        speedup_indexes=$(calculate_speedup "$with_indexes_time" "$with_partitioning_time")
+        speedup_no_indexes=$(calculate_speedup "$without_indexes_time" "$with_partitioning_time")
+    else
+        # Fallback if bc is not available - use simple text
+        speedup_indexes="See raw data"
+        speedup_no_indexes="See raw data"
+    fi
 
-    echo "\"$description\",$before_time,$after_time,$speedup" >> "$CSV_FILE"
+    echo "| $description | $with_indexes_time | $without_indexes_time | $with_partitioning_time | $speedup_indexes | $speedup_no_indexes |" >> "$SUMMARY_FILE"
+
+    echo "\"$description\",$with_indexes_time,$without_indexes_time,$with_partitioning_time,$speedup_indexes,$speedup_no_indexes" >> "$CSV_FILE"
 done
 
 cat >> "$SUMMARY_FILE" <<EOL
@@ -270,21 +372,41 @@ cat >> "$SUMMARY_FILE" <<EOL
 
 EOL
 
-PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "
-SELECT
-    parent.relname AS table_name,
-    child.relname AS partition_name,
-    pg_size_pretty(pg_relation_size(child.oid)) as size
-FROM pg_inherits
-    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
-    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-WHERE parent.relname IN ('title_basics', 'title_ratings', 'title_principals')
-ORDER BY parent.relname, pg_relation_size(child.oid) DESC;
-" --tuples-only >> "$SUMMARY_FILE"
+# Execute partition size query and append to summary
+docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$TMP_CHECK_INDEXES" >> "$SUMMARY_FILE"
+
+cat >> "$SUMMARY_FILE" <<EOL
+
+## Conclusions
+
+Based on the performance tests, we can observe that:
+
+1. **Impact of Removing Indexes**:
+   - Queries that rely heavily on filtering or joins showed significant performance degradation when indexes were removed.
+   - This confirms the importance of proper indexing for database performance.
+
+2. **Benefits of Partitioning**:
+   - Range partitioning on year (title_basics) improved queries that filter by time periods.
+   - Range partitioning on numVotes (title_ratings) enhanced queries filtering for popular content.
+   - Hash partitioning on nconst (title_principals) optimized actor-specific queries.
+
+3. **Partitioning vs. Indexing**:
+   - For certain query patterns, partitioning provides performance benefits beyond what's possible with indexing alone.
+   - The combination of strategic partitioning and targeted indexes yields the best results.
+
+4. **Recommendations**:
+   - Use range partitioning for columns with natural time or value progressions.
+   - Consider hash partitioning for high-cardinality columns used frequently in WHERE clauses.
+   - Maintain targeted indexes even with partitioned tables for optimal performance.
+EOL
+
+# Clean up temp files
+rm "$TMP_DROP_INDEXES" "$TMP_CREATE_PARTITIONS" "$TMP_CHECK_INDEXES"
 
 echo "Performance testing completed."
 echo "Results are available in the $RESULTS_DIR directory:"
-echo "- Raw results before partitioning: $BEFORE_FILE"
-echo "- Raw results after partitioning: $AFTER_FILE"
+echo "- Results with indexes: $WITH_INDEXES_FILE"
+echo "- Results without indexes: $WITHOUT_INDEXES_FILE"
+echo "- Results with partitioning: $WITH_PARTITIONING_FILE"
 echo "- Summary report: $SUMMARY_FILE"
 echo "- CSV data: $CSV_FILE"

@@ -1,0 +1,12 @@
+Query,With Indexes (ms),Without Indexes (ms),With Partitioning (ms),Speed-Up (Indexes vs Partitioning),Speed-Up (No Indexes vs Partitioning)
+"Query 6: Top 10 movies with year analysis",1.582,0.791,2.514,.62,.31
+"Query 10: Productivity by year",9.884,0.715,N/A,N/A,N/A
+"Query 7: Find actor by name",0.365,0.290,0.419,.87,.69
+"Query 11: Role categories",0.635,0.522,0.981,.64,.53
+"Query 2: Total persons",0.237,0.205,0.249,.95,.82
+"Query 3: Task categories",0.241,0.263,0.668,.36,.39
+"Query 8: Productions with roles",1.076,1.141,7.673,.14,.14
+"Query 4: High-rated productions",0.233,0.206,0.331,.70,.62
+"Query 5: Top 10 productions",0.635,0.773,0.808,.78,.95
+"Query 9: Movies and TV",0.898,0.740,N/A,N/A,N/A
+"Query 1: Total productions",0.208,0.191,0.615,.33,.31

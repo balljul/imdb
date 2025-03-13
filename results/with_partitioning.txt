@@ -1,0 +1,435 @@
+-----------------------------------------------------
+Query: Query 6: Top 10 movies with year analysis
+SQL: WITH top_movies AS (SELECT tb.primaryTitle, tb.startYear, tr.averageRating, tr.numVotes FROM title_basics tb JOIN title_ratings tr ON tb.tconst = tr.tconst WHERE tr.numVotes > 100000 AND tb.titleType = 'movie' ORDER BY tr.averageRating DESC LIMIT 10) SELECT *, CASE WHEN startYear > 2000 THEN 'After 2000' ELSE 'Before 2000' END as era FROM top_movies;
+-----------------------------------------------------
+Timing is on.
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on top_movies  (cost=75.76..75.91 rows=10 width=562) (actual time=0.027..0.028 rows=0 loops=1)
+   ->  Limit  (cost=75.76..75.79 rows=10 width=530) (actual time=0.027..0.027 rows=0 loops=1)
+         ->  Sort  (cost=75.76..75.94 rows=72 width=530) (actual time=0.026..0.027 rows=0 loops=1)
+               Sort Key: tr.averagerating DESC
+               Sort Method: quicksort  Memory: 25kB
+               ->  Nested Loop  (cost=0.28..74.20 rows=72 width=530) (actual time=0.014..0.015 rows=0 loops=1)
+                     ->  Append  (cost=0.00..32.66 rows=5 width=558) (actual time=0.014..0.014 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_before_1950 tb_1  (cost=0.00..0.00 rows=1 width=558) (actual time=0.002..0.002 rows=0 loops=1)
+                                 Filter: ((titletype)::text = 'movie'::text)
+                           ->  Index Scan using title_basics_1950_1970_titletype_idx on title_basics_1950_1970 tb_2  (cost=0.14..8.16 rows=1 width=558) (actual time=0.002..0.002 rows=0 loops=1)
+                                 Index Cond: ((titletype)::text = 'movie'::text)
+                           ->  Index Scan using title_basics_1970_1990_titletype_idx on title_basics_1970_1990 tb_3  (cost=0.14..8.16 rows=1 width=558) (actual time=0.002..0.002 rows=0 loops=1)
+                                 Index Cond: ((titletype)::text = 'movie'::text)
+                           ->  Index Scan using title_basics_1990_2010_titletype_idx on title_basics_1990_2010 tb_4  (cost=0.14..8.16 rows=1 width=558) (actual time=0.003..0.004 rows=0 loops=1)
+                                 Index Cond: ((titletype)::text = 'movie'::text)
+                           ->  Index Scan using title_basics_2010_present_titletype_idx on title_basics_2010_present tb_5  (cost=0.14..8.16 rows=1 width=558) (actual time=0.003..0.003 rows=0 loops=1)
+                                 Index Cond: ((titletype)::text = 'movie'::text)
+                     ->  Index Scan using title_ratings_very_high_pkey on title_ratings_very_high tr  (cost=0.28..8.30 rows=1 width=20) (never executed)
+                           Index Cond: (((tconst)::text = (tb.tconst)::text) AND (numvotes > 100000))
+ Planning Time: 2.514 ms
+ Execution Time: 0.068 ms
+(21 rows)
+
+Time: 7.572 ms
+
+
+-----------------------------------------------------
+Query: Query 10: Productivity by year
+SQL: SELECT tb.startYear, COUNT(DISTINCT tb.tconst) as number_of_titles, SUM(COALESCE(tb.runtimeMinutes, 0)) as total_minutes FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' AND tp.category = 'actor' GROUP BY tb.startYear ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate  (cost=748663.25..748663.27 rows=1 width=20) (actual time=10277.295..10277.304 rows=0 loops=1)
+   Group Key: tb.startyear
+   ->  Sort  (cost=748663.25..748663.25 rows=1 width=46) (actual time=10277.293..10277.302 rows=0 loops=1)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 25kB
+         ->  Nested Loop  (cost=669.28..748663.24 rows=1 width=46) (actual time=10277.274..10277.283 rows=0 loops=1)
+               ->  Hash Join  (cost=669.28..748656.13 rows=1 width=38) (actual time=4060.863..10276.252 rows=109 loops=1)
+                     Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                     ->  Append  (cost=640.54..747433.23 rows=454920 width=76) (actual time=77.765..8839.191 rows=21751978 loops=1)
+                           ->  Bitmap Heap Scan on title_principals_p0 tp_1  (cost=640.54..93847.94 rows=57304 width=76) (actual time=77.763..1664.650 rows=2720329 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=105126
+                                 ->  Bitmap Index Scan on title_principals_p0_category_idx  (cost=0.00..626.21 rows=57304 width=0) (actual time=62.404..62.404 rows=2720329 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p1 tp_2  (cost=637.57..93268.01 rows=56921 width=76) (actual time=77.074..1492.852 rows=2715851 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=104519
+                                 ->  Bitmap Index Scan on title_principals_p1_category_idx  (cost=0.00..623.34 rows=56921 width=0) (actual time=61.879..61.879 rows=2715851 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p2 tp_3  (cost=635.75..92908.88 rows=56686 width=76) (actual time=67.471..1375.659 rows=2679287 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=104052
+                                 ->  Bitmap Index Scan on title_principals_p2_category_idx  (cost=0.00..621.58 rows=56686 width=0) (actual time=52.672..52.673 rows=2679287 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p3 tp_4  (cost=628.89..92245.01 rows=56317 width=76) (actual time=68.271..1039.401 rows=2746025 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=103298
+                                 ->  Bitmap Index Scan on title_principals_p3_category_idx  (cost=0.00..614.81 rows=56317 width=0) (actual time=53.510..53.511 rows=2746025 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p4 tp_5  (cost=639.21..93506.91 rows=57132 width=76) (actual time=68.698..873.839 rows=2770610 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=104684
+                                 ->  Bitmap Index Scan on title_principals_p4_category_idx  (cost=0.00..624.92 rows=57132 width=0) (actual time=54.016..54.016 rows=2770610 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p5 tp_6  (cost=638.32..93452.65 rows=57018 width=76) (actual time=68.389..576.686 rows=2769730 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=104940
+                                 ->  Bitmap Index Scan on title_principals_p5_category_idx  (cost=0.00..624.07 rows=57018 width=0) (actual time=53.648..53.648 rows=2769730 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p6 tp_7  (cost=635.24..92714.24 rows=56620 width=76) (actual time=63.834..505.119 rows=2660950 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=103668
+                                 ->  Bitmap Index Scan on title_principals_p6_category_idx  (cost=0.00..621.08 rows=56620 width=0) (actual time=50.702..50.703 rows=2660950 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                           ->  Bitmap Heap Scan on title_principals_p7 tp_8  (cost=637.58..93214.99 rows=56922 width=76) (actual time=68.343..527.803 rows=2689196 loops=1)
+                                 Recheck Cond: ((category)::text = 'actor'::text)
+                                 Heap Blocks: exact=104263
+                                 ->  Bitmap Index Scan on title_principals_p7_category_idx  (cost=0.00..623.35 rows=56922 width=0) (actual time=53.588..53.588 rows=2689196 loops=1)
+                                       Index Cond: ((category)::text = 'actor'::text)
+                     ->  Hash  (cost=28.66..28.66 rows=6 width=10) (actual time=357.024..357.025 rows=1 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           ->  Index Scan using idx_name_basics_primaryname on name_basics nb  (cost=0.56..28.66 rows=6 width=10) (actual time=357.006..357.010 rows=1 loops=1)
+                                 Index Cond: ((primaryname)::text = 'Brad Pitt'::text)
+               ->  Append  (cost=0.00..7.06 rows=5 width=46) (actual time=0.008..0.008 rows=0 loops=109)
+                     ->  Seq Scan on title_basics_before_1950 tb_1  (cost=0.00..0.00 rows=1 width=46) (actual time=0.000..0.000 rows=0 loops=109)
+                           Filter: ((tp.tconst)::text = (tconst)::text)
+                     ->  Index Scan using title_basics_1950_1970_pkey on title_basics_1950_1970 tb_2  (cost=0.14..1.76 rows=1 width=46) (actual time=0.001..0.001 rows=0 loops=109)
+                           Index Cond: ((tconst)::text = (tp.tconst)::text)
+                     ->  Index Scan using title_basics_1970_1990_pkey on title_basics_1970_1990 tb_3  (cost=0.14..1.76 rows=1 width=46) (actual time=0.001..0.001 rows=0 loops=109)
+                           Index Cond: ((tconst)::text = (tp.tconst)::text)
+                     ->  Index Scan using title_basics_1990_2010_pkey on title_basics_1990_2010 tb_4  (cost=0.14..1.76 rows=1 width=46) (actual time=0.002..0.002 rows=0 loops=109)
+                           Index Cond: ((tconst)::text = (tp.tconst)::text)
+                     ->  Index Scan using title_basics_2010_present_pkey on title_basics_2010_present tb_5  (cost=0.14..1.76 rows=1 width=46) (actual time=0.001..0.001 rows=0 loops=109)
+                           Index Cond: ((tconst)::text = (tp.tconst)::text)
+ Planning Time: 2.996 ms
+ JIT:
+   Functions: 71
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.408 ms, Inlining 50.617 ms, Optimization 183.415 ms, Emission 122.649 ms, Total 358.089 ms
+ Execution Time: 10309.194 ms
+(70 rows)
+
+Time: 10314.347 ms (00:10.314)
+
+
+-----------------------------------------------------
+Query: Query 7: Find actor by name
+SQL: SELECT * FROM name_basics WHERE primaryName = 'Brad Pitt';
+-----------------------------------------------------
+Timing is on.
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_name_basics_primaryname on name_basics  (cost=0.56..28.66 rows=6 width=65) (actual time=0.039..0.041 rows=1 loops=1)
+   Index Cond: ((primaryname)::text = 'Brad Pitt'::text)
+ Planning Time: 0.419 ms
+ Execution Time: 0.059 ms
+(4 rows)
+
+Time: 1.269 ms
+
+
+-----------------------------------------------------
+Query: Query 11: Role categories
+SQL: SELECT tp.category, COUNT(*) as number_of_roles FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst WHERE nb.primaryName = 'Brad Pitt' GROUP BY tp.category ORDER BY number_of_roles DESC;
+-----------------------------------------------------
+Timing is on.
+                                                                                          QUERY PLAN                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=1516108.12..1516108.22 rows=38 width=126) (actual time=5796.192..5814.609 rows=4 loops=1)
+   Sort Key: (count(*)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  Finalize GroupAggregate  (cost=1516102.61..1516107.13 rows=38 width=126) (actual time=5796.154..5814.586 rows=4 loops=1)
+         Group Key: tp.category
+         ->  Gather Merge  (cost=1516102.61..1516106.59 rows=32 width=126) (actual time=5796.138..5814.574 rows=8 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  Partial GroupAggregate  (cost=1515102.59..1515102.87 rows=16 width=126) (actual time=5782.370..5782.389 rows=3 loops=3)
+                     Group Key: tp.category
+                     ->  Sort  (cost=1515102.59..1515102.63 rows=16 width=118) (actual time=5782.338..5782.349 rows=178 loops=3)
+                           Sort Key: tp.category
+                           Sort Method: quicksort  Memory: 38kB
+                           Worker 0:  Sort Method: quicksort  Memory: 37kB
+                           Worker 1:  Sort Method: quicksort  Memory: 25kB
+                           ->  Hash Join  (cost=28.74..1515102.27 rows=16 width=118) (actual time=4876.251..5782.222 rows=178 loops=3)
+                                 Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                                 ->  Parallel Append  (cost=0.00..1415559.63 rows=37910042 width=156) (actual time=184.634..4019.517 rows=30328034 loops=3)
+                                       ->  Parallel Seq Scan on title_principals_p0 tp_1  (cost=0.00..154404.20 rows=4775320 width=156) (actual time=180.016..1188.907 rows=11460769 loops=1)
+                                       ->  Parallel Seq Scan on title_principals_p4 tp_5  (cost=0.00..153823.41 rows=4761041 width=156) (actual time=180.919..1104.881 rows=11426498 loops=1)
+                                       ->  Parallel Seq Scan on title_principals_p5 tp_6  (cost=0.00..153776.19 rows=4751519 width=156) (actual time=0.059..943.177 rows=11403645 loops=1)
+                                       ->  Parallel Seq Scan on title_principals_p1 tp_2  (cost=0.00..153462.97 rows=4743397 width=156) (actual time=0.076..967.697 rows=11384153 loops=1)
+                                       ->  Parallel Seq Scan on title_principals_p7 tp_8  (cost=0.00..153359.20 rows=4743520 width=156) (actual time=0.047..313.974 rows=3794816 loops=3)
+                                       ->  Parallel Seq Scan on title_principals_p2 tp_3  (cost=0.00..152879.57 rows=4723857 width=156) (actual time=0.055..470.378 rows=5668628 loops=2)
+                                       ->  Parallel Seq Scan on title_principals_p6 tp_7  (cost=0.00..152530.23 rows=4718323 width=156) (actual time=0.038..929.782 rows=11323976 loops=1)
+                                       ->  Parallel Seq Scan on title_principals_p3 tp_4  (cost=0.00..151773.65 rows=4693065 width=156) (actual time=192.962..1144.109 rows=11263355 loops=1)
+                                 ->  Hash  (cost=28.66..28.66 rows=6 width=10) (actual time=0.044..0.045 rows=1 loops=3)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       ->  Index Scan using idx_name_basics_primaryname on name_basics nb  (cost=0.56..28.66 rows=6 width=10) (actual time=0.039..0.040 rows=1 loops=3)
+                                             Index Cond: ((primaryname)::text = 'Brad Pitt'::text)
+ Planning Time: 0.981 ms
+ JIT:
+   Functions: 90
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.935 ms, Inlining 121.130 ms, Optimization 252.474 ms, Emission 180.491 ms, Total 556.030 ms
+ Execution Time: 5826.320 ms
+(36 rows)
+
+Time: 5828.477 ms (00:05.828)
+
+
+-----------------------------------------------------
+Query: Query 2: Total persons
+SQL: SELECT COUNT(*) as total_persons FROM name_basics;
+-----------------------------------------------------
+Timing is on.
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=225472.17..225472.18 rows=1 width=8) (actual time=1409.761..1412.957 rows=1 loops=1)
+   ->  Gather  (cost=225471.96..225472.17 rows=2 width=8) (actual time=1409.649..1412.945 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Partial Aggregate  (cost=224471.96..224471.97 rows=1 width=8) (actual time=1400.084..1400.085 rows=1 loops=3)
+               ->  Parallel Seq Scan on name_basics  (cost=0.00..209680.77 rows=5916477 width=0) (actual time=0.114..1240.893 rows=4731707 loops=3)
+ Planning Time: 0.249 ms
+ JIT:
+   Functions: 8
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.268 ms, Inlining 0.000 ms, Optimization 0.345 ms, Emission 5.098 ms, Total 5.711 ms
+ Execution Time: 1424.664 ms
+(12 rows)
+
+Time: 1425.231 ms (00:01.425)
+
+
+-----------------------------------------------------
+Query: Query 3: Task categories
+SQL: SELECT DISTINCT category FROM title_principals ORDER BY category;
+-----------------------------------------------------
+Timing is on.
+                                                                                           QUERY PLAN                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=1511394.03..1511396.03 rows=200 width=118) (actual time=7515.838..7535.018 rows=13 loops=1)
+   ->  Sort  (cost=1511394.03..1511395.03 rows=400 width=118) (actual time=7515.837..7535.005 rows=39 loops=1)
+         Sort Key: title_principals.category
+         Sort Method: quicksort  Memory: 27kB
+         ->  Gather  (cost=1511334.74..1511376.74 rows=400 width=118) (actual time=7515.671..7534.963 rows=39 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  HashAggregate  (cost=1510334.74..1510336.74 rows=200 width=118) (actual time=7504.914..7504.919 rows=13 loops=3)
+                     Group Key: title_principals.category
+                     Batches: 1  Memory Usage: 40kB
+                     Worker 0:  Batches: 1  Memory Usage: 40kB
+                     Worker 1:  Batches: 1  Memory Usage: 40kB
+                     ->  Parallel Append  (cost=0.00..1415559.63 rows=37910042 width=118) (actual time=164.378..4174.162 rows=30328034 loops=3)
+                           ->  Parallel Seq Scan on title_principals_p0 title_principals_1  (cost=0.00..154404.20 rows=4775320 width=118) (actual time=164.732..1161.304 rows=11460769 loops=1)
+                           ->  Parallel Seq Scan on title_principals_p4 title_principals_5  (cost=0.00..153823.41 rows=4761041 width=118) (actual time=162.410..1148.757 rows=11426498 loops=1)
+                           ->  Parallel Seq Scan on title_principals_p5 title_principals_6  (cost=0.00..153776.19 rows=4751519 width=118) (actual time=0.068..1036.701 rows=11403645 loops=1)
+                           ->  Parallel Seq Scan on title_principals_p1 title_principals_2  (cost=0.00..153462.97 rows=4743397 width=118) (actual time=0.070..986.617 rows=11384153 loops=1)
+                           ->  Parallel Seq Scan on title_principals_p7 title_principals_8  (cost=0.00..153359.20 rows=4743520 width=118) (actual time=0.041..325.531 rows=3794816 loops=3)
+                           ->  Parallel Seq Scan on title_principals_p2 title_principals_3  (cost=0.00..152879.57 rows=4723857 width=118) (actual time=0.053..499.564 rows=5668628 loops=2)
+                           ->  Parallel Seq Scan on title_principals_p6 title_principals_7  (cost=0.00..152530.23 rows=4718323 width=118) (actual time=0.060..977.190 rows=11323976 loops=1)
+                           ->  Parallel Seq Scan on title_principals_p3 title_principals_4  (cost=0.00..151773.65 rows=4693065 width=118) (actual time=165.989..1128.667 rows=11263355 loops=1)
+ Planning Time: 0.668 ms
+ JIT:
+   Functions: 61
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.583 ms, Inlining 139.169 ms, Optimization 208.967 ms, Emission 145.146 ms, Total 494.865 ms
+ Execution Time: 7546.992 ms
+(27 rows)
+
+Time: 7548.253 ms (00:07.548)
+
+
+-----------------------------------------------------
+Query: Query 8: Productions with roles
+SQL: SELECT nb.primaryName, tb.primaryTitle, tb.startYear, tp.category, tp.characters FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=1516145.40..1516149.83 rows=38 width=684) (actual time=6814.353..6832.304 rows=0 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=1515145.37..1515145.42 rows=19 width=684) (actual time=6802.519..6802.528 rows=0 loops=3)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 25kB
+         Worker 0:  Sort Method: quicksort  Memory: 25kB
+         Worker 1:  Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Hash Join  (cost=1515102.47..1515144.97 rows=19 width=684) (actual time=6802.501..6802.511 rows=0 loops=3)
+               Hash Cond: ((tb.tconst)::text = (tp.tconst)::text)
+               ->  Parallel Append  (cost=0.00..41.92 rows=101 width=558) (actual time=0.572..0.574 rows=0 loops=3)
+                     ->  Parallel Seq Scan on title_basics_1950_1970 tb_2  (cost=0.00..10.35 rows=35 width=558) (actual time=0.001..0.001 rows=0 loops=1)
+                     ->  Parallel Seq Scan on title_basics_1970_1990 tb_3  (cost=0.00..10.35 rows=35 width=558) (actual time=0.000..0.000 rows=0 loops=1)
+                     ->  Parallel Seq Scan on title_basics_1990_2010 tb_4  (cost=0.00..10.35 rows=35 width=558) (actual time=0.855..0.855 rows=0 loops=2)
+                     ->  Parallel Seq Scan on title_basics_2010_present tb_5  (cost=0.00..10.35 rows=35 width=558) (actual time=0.000..0.000 rows=0 loops=1)
+                     ->  Parallel Seq Scan on title_basics_before_1950 tb_1  (cost=0.00..0.00 rows=1 width=558) (actual time=0.001..0.002 rows=0 loops=1)
+               ->  Parallel Hash  (cost=1515102.27..1515102.27 rows=16 width=202) (actual time=6801.781..6801.787 rows=178 loops=3)
+                     Buckets: 1024  Batches: 1  Memory Usage: 72kB
+                     ->  Hash Join  (cost=28.74..1515102.27 rows=16 width=202) (actual time=5806.286..6801.586 rows=178 loops=3)
+                           Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                           ->  Parallel Append  (cost=0.00..1415559.63 rows=37910042 width=226) (actual time=373.635..4787.869 rows=30328034 loops=3)
+                                 ->  Parallel Seq Scan on title_principals_p0 tp_1  (cost=0.00..154404.20 rows=4775320 width=226) (actual time=374.613..1525.088 rows=11460769 loops=1)
+                                 ->  Parallel Seq Scan on title_principals_p4 tp_5  (cost=0.00..153823.41 rows=4761041 width=226) (actual time=373.117..1524.782 rows=11426498 loops=1)
+                                 ->  Parallel Seq Scan on title_principals_p5 tp_6  (cost=0.00..153776.19 rows=4751519 width=226) (actual time=0.068..1170.569 rows=11403645 loops=1)
+                                 ->  Parallel Seq Scan on title_principals_p1 tp_2  (cost=0.00..153462.97 rows=4743397 width=226) (actual time=0.060..1148.560 rows=11384153 loops=1)
+                                 ->  Parallel Seq Scan on title_principals_p7 tp_8  (cost=0.00..153359.20 rows=4743520 width=226) (actual time=0.042..331.987 rows=3794816 loops=3)
+                                 ->  Parallel Seq Scan on title_principals_p2 tp_3  (cost=0.00..152879.57 rows=4723857 width=226) (actual time=0.059..507.273 rows=5668628 loops=2)
+                                 ->  Parallel Seq Scan on title_principals_p6 tp_7  (cost=0.00..152530.23 rows=4718323 width=226) (actual time=0.068..1099.698 rows=11323976 loops=1)
+                                 ->  Parallel Seq Scan on title_principals_p3 tp_4  (cost=0.00..151773.65 rows=4693065 width=226) (actual time=373.173..1502.467 rows=11263355 loops=1)
+                           ->  Hash  (cost=28.66..28.66 rows=6 width=24) (actual time=0.052..0.053 rows=1 loops=3)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                 ->  Index Scan using idx_name_basics_primaryname on name_basics nb  (cost=0.56..28.66 rows=6 width=24) (actual time=0.046..0.048 rows=1 loops=3)
+                                       Index Cond: ((primaryname)::text = 'Brad Pitt'::text)
+ Planning Time: 7.673 ms
+ JIT:
+   Functions: 126
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 3.388 ms, Inlining 144.298 ms, Optimization 585.665 ms, Emission 391.100 ms, Total 1124.452 ms
+ Execution Time: 6845.235 ms
+(39 rows)
+
+Time: 6853.898 ms (00:06.854)
+
+
+-----------------------------------------------------
+Query: Query 4: High-rated productions
+SQL: SELECT COUNT(*) as high_rated_productions FROM title_ratings WHERE numVotes > 100000;
+-----------------------------------------------------
+Timing is on.
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=62.08..62.09 rows=1 width=8) (actual time=0.697..0.698 rows=1 loops=1)
+   ->  Seq Scan on title_ratings_very_high title_ratings  (cost=0.00..54.90 rows=2872 width=0) (actual time=0.202..0.613 rows=2872 loops=1)
+         Filter: (numvotes > 100000)
+ Planning Time: 0.331 ms
+ Execution Time: 0.720 ms
+(5 rows)
+
+Time: 1.514 ms
+
+
+-----------------------------------------------------
+Query: Query 5: Top 10 productions
+SQL: SELECT tb.primaryTitle, tb.startYear, tr.averageRating, tr.numVotes FROM title_basics tb JOIN title_ratings tr ON tb.tconst = tr.tconst WHERE tr.numVotes > 100000 ORDER BY tr.averageRating DESC LIMIT 10;
+-----------------------------------------------------
+Timing is on.
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=304.26..304.28 rows=10 width=530) (actual time=0.039..0.040 rows=0 loops=1)
+   ->  Sort  (cost=304.26..312.91 rows=3461 width=530) (actual time=0.038..0.039 rows=0 loops=1)
+         Sort Key: tr.averagerating DESC
+         Sort Method: quicksort  Memory: 25kB
+         ->  Hash Join  (cost=46.62..229.47 rows=3461 width=530) (actual time=0.014..0.015 rows=0 loops=1)
+               Hash Cond: ((tr.tconst)::text = (tb.tconst)::text)
+               ->  Seq Scan on title_ratings_very_high tr  (cost=0.00..54.90 rows=2872 width=20) (actual time=0.004..0.004 rows=1 loops=1)
+                     Filter: (numvotes > 100000)
+               ->  Hash  (cost=43.60..43.60 rows=241 width=558) (actual time=0.005..0.006 rows=0 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 8kB
+                     ->  Append  (cost=0.00..43.60 rows=241 width=558) (actual time=0.005..0.005 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_before_1950 tb_1  (cost=0.00..0.00 rows=1 width=558) (actual time=0.001..0.001 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_1950_1970 tb_2  (cost=0.00..10.60 rows=60 width=558) (actual time=0.001..0.001 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_1970_1990 tb_3  (cost=0.00..10.60 rows=60 width=558) (actual time=0.001..0.001 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_1990_2010 tb_4  (cost=0.00..10.60 rows=60 width=558) (actual time=0.001..0.001 rows=0 loops=1)
+                           ->  Seq Scan on title_basics_2010_present tb_5  (cost=0.00..10.60 rows=60 width=558) (actual time=0.000..0.000 rows=0 loops=1)
+ Planning Time: 0.808 ms
+ Execution Time: 0.074 ms
+(18 rows)
+
+Time: 1.625 ms
+
+
+-----------------------------------------------------
+Query: Query 9: Movies and TV
+SQL: SELECT tb.primaryTitle, tb.titleType, tb.startYear, tb.runtimeMinutes FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' AND tb.titleType IN ('movie', 'short', 'tvSeries', 'tvEpisode') ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=737236.06..737236.30 rows=2 width=582) (actual time=17.471..20.950 rows=0 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=736236.04..736236.05 rows=1 width=582) (actual time=0.033..0.036 rows=0 loops=3)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 25kB
+         Worker 0:  Sort Method: quicksort  Memory: 25kB
+         Worker 1:  Sort Method: quicksort  Memory: 25kB
+         ->  Nested Loop  (cost=1989.57..736236.03 rows=1 width=582) (actual time=0.005..0.008 rows=0 loops=3)
+               ->  Parallel Append  (cost=0.00..42.14 rows=5 width=620) (actual time=0.005..0.006 rows=0 loops=3)
+                     ->  Parallel Seq Scan on title_basics_1950_1970 tb_2  (cost=0.00..10.53 rows=2 width=620) (actual time=0.000..0.001 rows=0 loops=1)
+                           Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+                     ->  Parallel Seq Scan on title_basics_1970_1990 tb_3  (cost=0.00..10.53 rows=2 width=620) (actual time=0.000..0.000 rows=0 loops=1)
+                           Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+                     ->  Parallel Seq Scan on title_basics_1990_2010 tb_4  (cost=0.00..10.53 rows=2 width=620) (actual time=0.009..0.010 rows=0 loops=1)
+                           Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+                     ->  Parallel Seq Scan on title_basics_2010_present tb_5  (cost=0.00..10.53 rows=2 width=620) (actual time=0.000..0.000 rows=0 loops=1)
+                           Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+                     ->  Parallel Seq Scan on title_basics_before_1950 tb_1  (cost=0.00..0.00 rows=1 width=620) (actual time=0.001..0.001 rows=0 loops=1)
+                           Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+               ->  Nested Loop  (cost=1989.57..147238.40 rows=38 width=38) (never executed)
+                     ->  Index Scan using idx_name_basics_primaryname on name_basics nb  (cost=0.56..28.66 rows=6 width=10) (never executed)
+                           Index Cond: ((primaryname)::text = 'Brad Pitt'::text)
+                     ->  Append  (cost=1989.01..24512.20 rows=2276 width=76) (never executed)
+                           ->  Bitmap Heap Scan on title_principals_p0 tp_1  (cost=1989.01..3089.11 rows=287 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p0_pkey  (cost=0.00..1988.93 rows=287 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p1 tp_2  (cost=1973.17..3065.59 rows=285 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p1_pkey  (cost=0.00..1973.10 rows=285 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p2 tp_3  (cost=1966.82..3051.59 rows=283 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p2_pkey  (cost=0.00..1966.75 rows=283 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p3 tp_4  (cost=1951.13..3031.95 rows=282 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p3_pkey  (cost=0.00..1951.06 rows=282 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p4 tp_5  (cost=1983.28..3079.52 rows=286 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p4_pkey  (cost=0.00..1983.21 rows=286 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p5 tp_6  (cost=1978.14..3070.61 rows=285 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p5_pkey  (cost=0.00..1978.07 rows=285 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p6 tp_7  (cost=1962.16..3046.87 rows=283 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p6_pkey  (cost=0.00..1962.09 rows=283 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                           ->  Bitmap Heap Scan on title_principals_p7 tp_8  (cost=1973.18..3065.58 rows=285 width=76) (never executed)
+                                 Recheck Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+                                 ->  Bitmap Index Scan on title_principals_p7_pkey  (cost=0.00..1973.11 rows=285 width=0) (never executed)
+                                       Index Cond: (((tconst)::text = (tb.tconst)::text) AND ((nconst)::text = (nb.nconst)::text))
+ Planning Time: 1.561 ms
+ JIT:
+   Functions: 219
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 4.803 ms, Inlining 0.000 ms, Optimization 0.000 ms, Emission 0.000 ms, Total 4.803 ms
+ Execution Time: 34.608 ms
+(62 rows)
+
+Time: 37.249 ms
+
+
+-----------------------------------------------------
+Query: Query 1: Total productions
+SQL: SELECT COUNT(*) as total_productions FROM title_basics;
+-----------------------------------------------------
+Timing is on.
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=44.21..44.22 rows=1 width=8) (actual time=0.014..0.015 rows=1 loops=1)
+   ->  Append  (cost=0.00..43.60 rows=241 width=0) (actual time=0.012..0.012 rows=0 loops=1)
+         ->  Seq Scan on title_basics_before_1950 title_basics_1  (cost=0.00..0.00 rows=1 width=0) (actual time=0.002..0.002 rows=0 loops=1)
+         ->  Seq Scan on title_basics_1950_1970 title_basics_2  (cost=0.00..10.60 rows=60 width=0) (actual time=0.001..0.001 rows=0 loops=1)
+         ->  Seq Scan on title_basics_1970_1990 title_basics_3  (cost=0.00..10.60 rows=60 width=0) (actual time=0.000..0.000 rows=0 loops=1)
+         ->  Seq Scan on title_basics_1990_2010 title_basics_4  (cost=0.00..10.60 rows=60 width=0) (actual time=0.007..0.007 rows=0 loops=1)
+         ->  Seq Scan on title_basics_2010_present title_basics_5  (cost=0.00..10.60 rows=60 width=0) (actual time=0.000..0.001 rows=0 loops=1)
+ Planning Time: 0.615 ms
+ Execution Time: 0.047 ms
+(9 rows)
+
+Time: 1.035 ms
+
+

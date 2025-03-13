@@ -1,0 +1,342 @@
+-----------------------------------------------------
+Query: Query 6: Top 10 movies with year analysis
+SQL: WITH top_movies AS (SELECT tb.primaryTitle, tb.startYear, tr.averageRating, tr.numVotes FROM title_basics tb JOIN title_ratings tr ON tb.tconst = tr.tconst WHERE tr.numVotes > 100000 AND tb.titleType = 'movie' ORDER BY tr.averageRating DESC LIMIT 10) SELECT *, CASE WHEN startYear > 2000 THEN 'After 2000' ELSE 'Before 2000' END as era FROM top_movies;
+-----------------------------------------------------
+Timing is on.
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on top_movies  (cost=18865.19..20219.34 rows=10 width=66) (actual time=32.465..36.358 rows=10 loops=1)
+   ->  Limit  (cost=18865.19..20219.21 rows=10 width=34) (actual time=32.463..36.354 rows=10 loops=1)
+         ->  Nested Loop  (cost=18865.19..50007.75 rows=230 width=34) (actual time=32.462..36.351 rows=10 loops=1)
+               ->  Gather Merge  (cost=18864.76..19298.24 rows=3722 width=20) (actual time=32.177..35.448 rows=51 loops=1)
+                     Workers Planned: 2
+                     Workers Launched: 2
+                     ->  Sort  (cost=17864.73..17868.61 rows=1551 width=20) (actual time=30.572..30.598 rows=625 loops=3)
+                           Sort Key: tr.averagerating DESC
+                           Sort Method: quicksort  Memory: 88kB
+                           Worker 0:  Sort Method: quicksort  Memory: 80kB
+                           Worker 1:  Sort Method: quicksort  Memory: 85kB
+                           ->  Parallel Seq Scan on title_ratings tr  (cost=0.00..17782.54 rows=1551 width=20) (actual time=0.091..30.153 rows=957 loops=3)
+                                 Filter: (numvotes > 100000)
+                                 Rows Removed by Filter: 511013
+               ->  Index Scan using title_basics_pkey on title_basics tb  (cost=0.43..8.25 rows=1 width=34) (actual time=0.017..0.017 rows=0 loops=51)
+                     Index Cond: ((tconst)::text = (tr.tconst)::text)
+                     Filter: ((titletype)::text = 'movie'::text)
+                     Rows Removed by Filter: 1
+ Planning Time: 0.791 ms
+ Execution Time: 36.417 ms
+(20 rows)
+
+Time: 38.295 ms
+
+
+-----------------------------------------------------
+Query: Query 10: Productivity by year
+SQL: SELECT tb.startYear, COUNT(DISTINCT tb.tconst) as number_of_titles, SUM(COALESCE(tb.runtimeMinutes, 0)) as total_minutes FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' AND tp.category = 'actor' GROUP BY tb.startYear ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                                QUERY PLAN                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate  (cost=1568986.95..1568987.13 rows=9 width=20) (actual time=3649.196..3676.196 rows=39 loops=1)
+   Group Key: tb.startyear
+   ->  Sort  (cost=1568986.95..1568986.97 rows=9 width=18) (actual time=3648.544..3675.495 rows=109 loops=1)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 31kB
+         ->  Gather  (cost=225445.95..1568986.81 rows=9 width=18) (actual time=506.648..3675.398 rows=109 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  Nested Loop  (cost=224445.95..1567985.91 rows=4 width=18) (actual time=488.475..3627.918 rows=36 loops=3)
+                     ->  Parallel Hash Join  (cost=224445.51..1567965.93 rows=4 width=10) (actual time=488.420..3626.871 rows=36 loops=3)
+                           Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                           ->  Parallel Seq Scan on title_principals tp  (cost=0.00..1320449.38 rows=8788965 width=20) (actual time=7.722..2628.794 rows=7250659 loops=3)
+                                 Filter: ((category)::text = 'actor'::text)
+                                 Rows Removed by Filter: 23077375
+                           ->  Parallel Hash  (cost=224445.49..224445.49 rows=2 width=10) (actual time=451.151..451.151 rows=0 loops=3)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 40kB
+                                 ->  Parallel Seq Scan on name_basics nb  (cost=0.00..224445.49 rows=2 width=10) (actual time=357.857..451.112 rows=0 loops=3)
+                                       Filter: ((primaryname)::text = 'Brad Pitt'::text)
+                                       Rows Removed by Filter: 4731706
+                     ->  Index Scan using title_basics_pkey on title_basics tb  (cost=0.43..4.99 rows=1 width=18) (actual time=0.025..0.025 rows=1 loops=109)
+                           Index Cond: ((tconst)::text = (tp.tconst)::text)
+ Planning Time: 0.715 ms
+ JIT:
+   Functions: 62
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.948 ms, Inlining 154.682 ms, Optimization 194.590 ms, Emission 137.338 ms, Total 488.559 ms
+ Execution Time: 3687.452 ms
+(27 rows)
+
+Time: 3691.483 ms (00:03.691)
+
+
+-----------------------------------------------------
+Query: Query 7: Find actor by name
+SQL: SELECT * FROM name_basics WHERE primaryName = 'Brad Pitt';
+-----------------------------------------------------
+Timing is on.
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..225446.09 rows=6 width=65) (actual time=2.183..373.861 rows=1 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on name_basics  (cost=0.00..224445.49 rows=2 width=65) (actual time=236.195..358.773 rows=0 loops=3)
+         Filter: ((primaryname)::text = 'Brad Pitt'::text)
+         Rows Removed by Filter: 4731706
+ Planning Time: 0.290 ms
+ JIT:
+   Functions: 6
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.469 ms, Inlining 0.000 ms, Optimization 0.422 ms, Emission 6.315 ms, Total 7.206 ms
+ Execution Time: 402.242 ms
+(12 rows)
+
+Time: 403.404 ms
+
+
+-----------------------------------------------------
+Query: Query 11: Role categories
+SQL: SELECT tp.category, COUNT(*) as number_of_roles FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst WHERE nb.primaryName = 'Brad Pitt' GROUP BY tp.category ORDER BY number_of_roles DESC;
+-----------------------------------------------------
+Timing is on.
+                                                                                    QUERY PLAN                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=1550634.45..1550634.48 rows=13 width=15) (actual time=5184.418..5193.616 rows=4 loops=1)
+   Sort Key: (count(*)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  Finalize GroupAggregate  (cost=1550630.70..1550634.21 rows=13 width=15) (actual time=5184.387..5193.603 rows=4 loops=1)
+         Group Key: tp.category
+         ->  Gather Merge  (cost=1550630.70..1550633.95 rows=26 width=15) (actual time=5184.351..5193.573 rows=12 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  Partial GroupAggregate  (cost=1549630.68..1549630.93 rows=13 width=15) (actual time=5174.638..5174.659 rows=4 loops=3)
+                     Group Key: tp.category
+                     ->  Sort  (cost=1549630.68..1549630.72 rows=16 width=7) (actual time=5174.598..5174.608 rows=178 loops=3)
+                           Sort Key: tp.category
+                           Sort Method: quicksort  Memory: 34kB
+                           Worker 0:  Sort Method: quicksort  Memory: 34kB
+                           Worker 1:  Sort Method: quicksort  Memory: 33kB
+                           ->  Parallel Hash Join  (cost=224445.51..1549630.36 rows=16 width=7) (actual time=423.049..5174.309 rows=178 loops=3)
+                                 Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                                 ->  Parallel Seq Scan on title_principals tp  (cost=0.00..1225740.70 rows=37883470 width=17) (actual time=0.024..2413.317 rows=30328034 loops=3)
+                                 ->  Parallel Hash  (cost=224445.49..224445.49 rows=2 width=10) (actual time=407.458..407.459 rows=0 loops=3)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 40kB
+                                       ->  Parallel Seq Scan on name_basics nb  (cost=0.00..224445.49 rows=2 width=10) (actual time=314.518..407.415 rows=0 loops=3)
+                                             Filter: ((primaryname)::text = 'Brad Pitt'::text)
+                                             Rows Removed by Filter: 4731706
+ Planning Time: 0.522 ms
+ JIT:
+   Functions: 51
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.325 ms, Inlining 134.762 ms, Optimization 154.770 ms, Emission 112.690 ms, Total 403.547 ms
+ Execution Time: 5204.601 ms
+(29 rows)
+
+Time: 5206.193 ms (00:05.206)
+
+
+-----------------------------------------------------
+Query: Query 2: Total persons
+SQL: SELECT COUNT(*) as total_persons FROM name_basics;
+-----------------------------------------------------
+Timing is on.
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=225445.70..225445.71 rows=1 width=8) (actual time=485.240..489.026 rows=1 loops=1)
+   ->  Gather  (cost=225445.49..225445.70 rows=2 width=8) (actual time=485.096..489.009 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Partial Aggregate  (cost=224445.49..224445.50 rows=1 width=8) (actual time=475.629..475.630 rows=1 loops=3)
+               ->  Parallel Seq Scan on name_basics  (cost=0.00..209659.79 rows=5914279 width=0) (actual time=0.026..307.271 rows=4731707 loops=3)
+ Planning Time: 0.205 ms
+ JIT:
+   Functions: 8
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.282 ms, Inlining 0.000 ms, Optimization 0.345 ms, Emission 5.106 ms, Total 5.733 ms
+ Execution Time: 500.910 ms
+(12 rows)
+
+Time: 501.759 ms
+
+
+-----------------------------------------------------
+Query: Query 3: Task categories
+SQL: SELECT DISTINCT category FROM title_principals ORDER BY category;
+-----------------------------------------------------
+Timing is on.
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=1321452.72..1321452.85 rows=13 width=7) (actual time=6429.403..6437.971 rows=13 loops=1)
+   ->  Sort  (cost=1321452.72..1321452.78 rows=26 width=7) (actual time=6429.402..6437.958 rows=39 loops=1)
+         Sort Key: category
+         Sort Method: quicksort  Memory: 27kB
+         ->  Gather  (cost=1321449.38..1321452.10 rows=26 width=7) (actual time=6429.214..6437.908 rows=39 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  HashAggregate  (cost=1320449.38..1320449.50 rows=13 width=7) (actual time=6419.730..6419.732 rows=13 loops=3)
+                     Group Key: category
+                     Batches: 1  Memory Usage: 24kB
+                     Worker 0:  Batches: 1  Memory Usage: 24kB
+                     Worker 1:  Batches: 1  Memory Usage: 24kB
+                     ->  Parallel Seq Scan on title_principals  (cost=0.00..1225740.70 rows=37883470 width=7) (actual time=0.023..2016.978 rows=30328034 loops=3)
+ Planning Time: 0.263 ms
+ JIT:
+   Functions: 16
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.652 ms, Inlining 135.964 ms, Optimization 56.580 ms, Emission 41.921 ms, Total 235.116 ms
+ Execution Time: 6449.825 ms
+(19 rows)
+
+Time: 6450.704 ms (00:06.451)
+
+
+-----------------------------------------------------
+Query: Query 8: Productions with roles
+SQL: SELECT nb.primaryName, tb.primaryTitle, tb.startYear, tp.category, tp.characters FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=1550710.54..1550714.27 rows=32 width=61) (actual time=4556.705..4565.800 rows=534 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=1549710.52..1549710.56 rows=16 width=61) (actual time=4546.915..4546.932 rows=178 loops=3)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 45kB
+         Worker 0:  Sort Method: quicksort  Memory: 42kB
+         Worker 1:  Sort Method: quicksort  Memory: 41kB
+         ->  Nested Loop  (cost=224445.95..1549710.20 rows=16 width=61) (actual time=450.507..4546.691 rows=178 loops=3)
+               ->  Parallel Hash Join  (cost=224445.51..1549630.36 rows=16 width=47) (actual time=450.458..4542.701 rows=178 loops=3)
+                     Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                     ->  Parallel Seq Scan on title_principals tp  (cost=0.00..1225740.70 rows=37883470 width=43) (actual time=0.072..1937.538 rows=30328034 loops=3)
+                     ->  Parallel Hash  (cost=224445.49..224445.49 rows=2 width=24) (actual time=441.590..441.591 rows=0 loops=3)
+                           Buckets: 1024  Batches: 1  Memory Usage: 40kB
+                           ->  Parallel Seq Scan on name_basics nb  (cost=0.00..224445.49 rows=2 width=24) (actual time=347.462..441.545 rows=0 loops=3)
+                                 Filter: ((primaryname)::text = 'Brad Pitt'::text)
+                                 Rows Removed by Filter: 4731706
+               ->  Index Scan using title_basics_pkey on title_basics tb  (cost=0.43..4.99 rows=1 width=34) (actual time=0.020..0.020 rows=1 loops=534)
+                     Index Cond: ((tconst)::text = (tp.tconst)::text)
+ Planning Time: 1.141 ms
+ JIT:
+   Functions: 54
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.562 ms, Inlining 132.898 ms, Optimization 228.174 ms, Emission 151.865 ms, Total 514.499 ms
+ Execution Time: 4577.478 ms
+(25 rows)
+
+Time: 4579.711 ms (00:04.580)
+
+
+-----------------------------------------------------
+Query: Query 4: High-rated productions
+SQL: SELECT COUNT(*) as high_rated_productions FROM title_ratings WHERE numVotes > 100000;
+-----------------------------------------------------
+Timing is on.
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=18786.63..18786.64 rows=1 width=8) (actual time=27.466..31.478 rows=1 loops=1)
+   ->  Gather  (cost=18786.41..18786.62 rows=2 width=8) (actual time=27.360..31.473 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Partial Aggregate  (cost=17786.41..17786.42 rows=1 width=8) (actual time=26.017..26.018 rows=1 loops=3)
+               ->  Parallel Seq Scan on title_ratings  (cost=0.00..17782.54 rows=1551 width=0) (actual time=0.081..25.964 rows=957 loops=3)
+                     Filter: (numvotes > 100000)
+                     Rows Removed by Filter: 511013
+ Planning Time: 0.206 ms
+ Execution Time: 31.526 ms
+(10 rows)
+
+Time: 32.328 ms
+
+
+-----------------------------------------------------
+Query: Query 5: Top 10 productions
+SQL: SELECT tb.primaryTitle, tb.startYear, tr.averageRating, tr.numVotes FROM title_basics tb JOIN title_ratings tr ON tb.tconst = tr.tconst WHERE tr.numVotes > 100000 ORDER BY tr.averageRating DESC LIMIT 10;
+-----------------------------------------------------
+Timing is on.
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=18865.19..18948.84 rows=10 width=34) (actual time=29.935..34.288 rows=10 loops=1)
+   ->  Nested Loop  (cost=18865.19..49998.45 rows=3722 width=34) (actual time=29.934..34.286 rows=10 loops=1)
+         ->  Gather Merge  (cost=18864.76..19298.24 rows=3722 width=20) (actual time=29.885..34.113 rows=10 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  Sort  (cost=17864.73..17868.61 rows=1551 width=20) (actual time=28.092..28.119 rows=630 loops=3)
+                     Sort Key: tr.averagerating DESC
+                     Sort Method: quicksort  Memory: 86kB
+                     Worker 0:  Sort Method: quicksort  Memory: 84kB
+                     Worker 1:  Sort Method: quicksort  Memory: 83kB
+                     ->  Parallel Seq Scan on title_ratings tr  (cost=0.00..17782.54 rows=1551 width=20) (actual time=0.088..27.695 rows=957 loops=3)
+                           Filter: (numvotes > 100000)
+                           Rows Removed by Filter: 511013
+         ->  Index Scan using title_basics_pkey on title_basics tb  (cost=0.43..8.25 rows=1 width=34) (actual time=0.016..0.016 rows=1 loops=10)
+               Index Cond: ((tconst)::text = (tr.tconst)::text)
+ Planning Time: 0.773 ms
+ Execution Time: 34.332 ms
+(17 rows)
+
+Time: 36.305 ms
+
+
+-----------------------------------------------------
+Query: Query 9: Movies and TV
+SQL: SELECT tb.primaryTitle, tb.titleType, tb.startYear, tb.runtimeMinutes FROM name_basics nb JOIN title_principals tp ON nb.nconst = tp.nconst JOIN title_basics tb ON tp.tconst = tb.tconst WHERE nb.primaryName = 'Brad Pitt' AND tb.titleType IN ('movie', 'short', 'tvSeries', 'tvEpisode') ORDER BY tb.startYear;
+-----------------------------------------------------
+Timing is on.
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=1550710.59..1550714.09 rows=30 width=37) (actual time=4930.663..4940.482 rows=465 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=1549710.57..1549710.61 rows=15 width=37) (actual time=4919.936..4919.948 rows=155 loops=3)
+         Sort Key: tb.startyear
+         Sort Method: quicksort  Memory: 37kB
+         Worker 0:  Sort Method: quicksort  Memory: 38kB
+         Worker 1:  Sort Method: quicksort  Memory: 36kB
+         ->  Nested Loop  (cost=224445.95..1549710.28 rows=15 width=37) (actual time=484.634..4919.698 rows=155 loops=3)
+               ->  Parallel Hash Join  (cost=224445.51..1549630.36 rows=16 width=10) (actual time=479.729..4915.270 rows=178 loops=3)
+                     Hash Cond: ((tp.nconst)::text = (nb.nconst)::text)
+                     ->  Parallel Seq Scan on title_principals tp  (cost=0.00..1225740.70 rows=37883470 width=20) (actual time=0.024..2091.019 rows=30328034 loops=3)
+                     ->  Parallel Hash  (cost=224445.49..224445.49 rows=2 width=10) (actual time=465.982..465.983 rows=0 loops=3)
+                           Buckets: 1024  Batches: 1  Memory Usage: 40kB
+                           ->  Parallel Seq Scan on name_basics nb  (cost=0.00..224445.49 rows=2 width=10) (actual time=359.866..465.936 rows=0 loops=3)
+                                 Filter: ((primaryname)::text = 'Brad Pitt'::text)
+                                 Rows Removed by Filter: 4731706
+               ->  Index Scan using title_basics_pkey on title_basics tb  (cost=0.43..4.99 rows=1 width=47) (actual time=0.022..0.022 rows=1 loops=534)
+                     Index Cond: ((tconst)::text = (tp.tconst)::text)
+                     Filter: ((titletype)::text = ANY ('{movie,short,tvSeries,tvEpisode}'::text[]))
+                     Rows Removed by Filter: 0
+ Planning Time: 0.740 ms
+ JIT:
+   Functions: 57
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.638 ms, Inlining 151.137 ms, Optimization 184.210 ms, Emission 137.728 ms, Total 474.713 ms
+ Execution Time: 4951.715 ms
+(27 rows)
+
+Time: 4953.561 ms (00:04.954)
+
+
+-----------------------------------------------------
+Query: Query 1: Total productions
+SQL: SELECT COUNT(*) as total_productions FROM title_basics;
+-----------------------------------------------------
+Timing is on.
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=230130.75..230130.76 rows=1 width=8) (actual time=432.348..435.734 rows=1 loops=1)
+   ->  Gather  (cost=230130.53..230130.74 rows=2 width=8) (actual time=432.252..435.723 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Partial Aggregate  (cost=229130.53..229130.54 rows=1 width=8) (actual time=423.096..423.097 rows=1 loops=3)
+               ->  Parallel Seq Scan on title_basics  (cost=0.00..217182.83 rows=4779082 width=0) (actual time=1.019..297.116 rows=3821632 loops=3)
+ Planning Time: 0.191 ms
+ JIT:
+   Functions: 8
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.266 ms, Inlining 0.000 ms, Optimization 0.296 ms, Emission 4.734 ms, Total 5.296 ms
+ Execution Time: 446.191 ms
+(12 rows)
+
+Time: 446.823 ms
+
+
